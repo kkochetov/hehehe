@@ -36,10 +36,6 @@ export default function Workspace() {
     null
   )
 
-  const registerPort = (id: string, el: HTMLDivElement | null) => {
-    portRefs.current[id] = el
-  }
-
   const updatePortPositions = () => {
     const wsRect = workspaceRef.current?.getBoundingClientRect()
     if (!wsRect) return
@@ -54,6 +50,11 @@ export default function Workspace() {
       }
     })
     setPortPos(pos)
+  }
+
+  const registerPort = (id: string, el: HTMLDivElement | null) => {
+    portRefs.current[id] = el
+    if (el) updatePortPositions()
   }
 
   useLayoutEffect(() => {
@@ -145,6 +146,7 @@ export default function Workspace() {
   }
 
   const startConnection = (id: string, e: React.MouseEvent<HTMLDivElement>) => {
+    updatePortPositions()
     const wsRect = workspaceRef.current?.getBoundingClientRect()
     if (!wsRect) return
     setConnecting({ from: id, x: e.clientX - wsRect.left, y: e.clientY - wsRect.top })

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import type React from 'react'
 import Chip from './Chip'
 import './App.css'
@@ -36,7 +36,7 @@ export default function Workspace() {
     null
   )
 
-  const updatePortPositions = () => {
+  const updatePortPositions = useCallback(() => {
     const wsRect = workspaceRef.current?.getBoundingClientRect()
     if (!wsRect) return
     const pos: Record<string, { x: number; y: number }> = {}
@@ -50,16 +50,19 @@ export default function Workspace() {
       }
     })
     setPortPos(pos)
-  }
+  }, [])
 
-  const registerPort = (id: string, el: HTMLDivElement | null) => {
-    portRefs.current[id] = el
-    if (el) updatePortPositions()
-  }
+  const registerPort = useCallback(
+    (id: string, el: HTMLDivElement | null) => {
+      portRefs.current[id] = el
+      if (el) updatePortPositions()
+    },
+    [updatePortPositions],
+  )
 
   useLayoutEffect(() => {
     updatePortPositions()
-  }, [chips, wsOutSources])
+  }, [chips, wsOutSources, updatePortPositions])
 
   const addChip = () => {
     const id = chips.length

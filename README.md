@@ -1,4 +1,6 @@
-# TIS-100 React Playground
+# React Playground
+# Fully vibecoded. 
+# Made for lulzez
 
 A small React + TypeScript single page application inspired by the game **TIS-100**. The page renders one programmable chip with three inputs and three outputs. The simple assembler supports two instructions:
 

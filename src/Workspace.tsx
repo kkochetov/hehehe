@@ -59,28 +59,14 @@ export default function Workspace() {
     })
   }, [])
 
-  const raf = useRef<number | null>(null)
-
-  const schedulePortPosUpdate = useCallback(() => {
-    if (raf.current !== null) cancelAnimationFrame(raf.current)
-    raf.current = requestAnimationFrame(() => {
-      updatePortPositions()
-      raf.current = null
-    })
-  }, [updatePortPositions])
-
-  const registerPort = useCallback(
-    (id: string, el: HTMLDivElement | null) => {
-      if (el) portRefs.current[id] = el
-      else delete portRefs.current[id]
-      schedulePortPosUpdate()
-    },
-    [schedulePortPosUpdate],
-  )
+  const registerPort = useCallback((id: string, el: HTMLDivElement | null) => {
+    if (el) portRefs.current[id] = el
+    else delete portRefs.current[id]
+  }, [])
 
   useLayoutEffect(() => {
     updatePortPositions()
-  }, [chips, wsOutSources, updatePortPositions])
+  })
 
   const addChip = () => {
     const id = chips.length

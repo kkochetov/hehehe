@@ -49,7 +49,14 @@ export default function Workspace() {
         }
       }
     })
-    setPortPos(pos)
+    setPortPos((prev) => {
+      const same =
+        Object.keys(prev).length === Object.keys(pos).length &&
+        Object.entries(pos).every(
+          ([key, value]) => prev[key]?.x === value.x && prev[key]?.y === value.y,
+        )
+      return same ? prev : pos
+    })
   }, [])
 
   const registerPort = useCallback(

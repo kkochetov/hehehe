@@ -12,4 +12,9 @@ export default defineConfig({
   // Allow the base path to be configured at build time so that the app can
   // be served from different directories on GitHub Pages.
   base: basePath,
+  // Skip minification to surface full React error messages in production
+  // builds when debugging issues like the blank page seen on Pages.
+  build: {
+    minify: false,
+  },
 })

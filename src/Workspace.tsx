@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
+import type React from 'react'
 import Chip from './Chip'
 import './App.css'
 
@@ -9,7 +10,11 @@ type ChipConfig = {
   code: string
   inputSources: string[]
   outputs: string[]
+  x: number
+  y: number
 }
+
+type Connection = { from: string; to: string }
 
 export default function Workspace() {
   const [inputs, setInputs] = useState<string[]>(Array(NUM_PORTS).fill(''))
@@ -19,6 +24,42 @@ export default function Workspace() {
     Array(NUM_PORTS).fill('')
   )
 
+  const workspaceRef = useRef<HTMLDivElement>(null)
+  const portRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const [portPos, setPortPos] = useState<Record<string, { x: number; y: number }>>({})
+  const [draggingChip, setDraggingChip] = useState<{
+    id: number
+    offsetX: number
+    offsetY: number
+  } | null>(null)
+  const [connecting, setConnecting] = useState<{ from: string; x: number; y: number } | null>(
+    null
+  )
+
+  const registerPort = (id: string, el: HTMLDivElement | null) => {
+    portRefs.current[id] = el
+  }
+
+  const updatePortPositions = () => {
+    const wsRect = workspaceRef.current?.getBoundingClientRect()
+    if (!wsRect) return
+    const pos: Record<string, { x: number; y: number }> = {}
+    Object.entries(portRefs.current).forEach(([id, el]) => {
+      if (el) {
+        const r = el.getBoundingClientRect()
+        pos[id] = {
+          x: r.left + r.width / 2 - wsRect.left,
+          y: r.top + r.height / 2 - wsRect.top,
+        }
+      }
+    })
+    setPortPos(pos)
+  }
+
+  useLayoutEffect(() => {
+    updatePortPositions()
+  }, [chips, wsOutSources])
+
   const addChip = () => {
     const id = chips.length
     setChips([
@@ -26,10 +67,10 @@ export default function Workspace() {
       {
         id,
         code: 'IN 1\nOUT 1',
-        inputSources: Array(NUM_PORTS)
-          .fill(0)
-          .map((_, i) => `w:${i}`),
+        inputSources: Array(NUM_PORTS).fill(''),
         outputs: Array(NUM_PORTS).fill(''),
+        x: 100 + id * 20,
+        y: 100,
       },
     ])
   }
@@ -59,6 +100,69 @@ export default function Workspace() {
     setWsOutSources(next)
   }
 
+  const handleChipMouseDown = (
+    id: number,
+    e: React.MouseEvent<HTMLDivElement>
+  ) => {
+    if (
+      (e.target as HTMLElement).classList.contains('port') ||
+      e.target instanceof HTMLTextAreaElement
+    )
+      return
+    const chip = chips.find((c) => c.id === id)
+    if (!chip) return
+    setDraggingChip({ id, offsetX: e.clientX - chip.x, offsetY: e.clientY - chip.y })
+  }
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (draggingChip) {
+      setChips(
+        chips.map((c) =>
+          c.id === draggingChip.id
+            ? {
+                ...c,
+                x: e.clientX - draggingChip.offsetX,
+                y: e.clientY - draggingChip.offsetY,
+              }
+            : c
+        )
+      )
+      updatePortPositions()
+    } else if (connecting) {
+      const wsRect = workspaceRef.current?.getBoundingClientRect()
+      if (wsRect)
+        setConnecting({
+          ...connecting,
+          x: e.clientX - wsRect.left,
+          y: e.clientY - wsRect.top,
+        })
+    }
+  }
+
+  const handleMouseUp = () => {
+    setDraggingChip(null)
+    setConnecting(null)
+  }
+
+  const startConnection = (id: string, e: React.MouseEvent<HTMLDivElement>) => {
+    const wsRect = workspaceRef.current?.getBoundingClientRect()
+    if (!wsRect) return
+    setConnecting({ from: id, x: e.clientX - wsRect.left, y: e.clientY - wsRect.top })
+    e.stopPropagation()
+  }
+
+  const finishConnection = (destId: string) => {
+    if (!connecting) return
+    if (destId.startsWith('ci:')) {
+      const [, chipId, port] = destId.split(':')
+      setInputSource(parseInt(chipId), parseInt(port), connecting.from)
+    } else if (destId.startsWith('wo:')) {
+      const [, port] = destId.split(':')
+      setWorkspaceOutSource(parseInt(port), connecting.from)
+    }
+    setConnecting(null)
+  }
+
   const run = () => {
     const chipOutputs: Record<number, string[]> = {}
 
@@ -85,8 +189,7 @@ export default function Workspace() {
       const ins = chip.inputSources.map((src) => {
         const [type, a, b] = src.split(':')
         if (type === 'w') return inputs[parseInt(a)]
-        if (type === 'c')
-          return chipOutputs[parseInt(a)]?.[parseInt(b)] || ''
+        if (type === 'c') return chipOutputs[parseInt(a)]?.[parseInt(b)] || ''
         return ''
       })
       chipOutputs[chip.id] = runChip(chip.code, ins)
@@ -105,86 +208,100 @@ export default function Workspace() {
     setOutputs(wsOuts)
   }
 
-  const inputOptions = Array.from({ length: NUM_PORTS }, (_, i) => ({
-    value: `w:${i}`,
-    label: `IN ${i + 1}`,
-  }))
-
-  const workspaceOutputOptions = [
-    ...inputOptions,
-    ...chips.flatMap((chip, i) =>
-      Array.from({ length: NUM_PORTS }, (_, j) => ({
-        value: `c:${chip.id}:${j}`,
-        label: `Chip ${i + 1} OUT ${j + 1}`,
-      }))
-    ),
+  const connections: Connection[] = [
+    ...chips
+      .flatMap((chip) =>
+        chip.inputSources.map((src, i) =>
+          src ? { from: src, to: `ci:${chip.id}:${i}` } : null
+        )
+      )
+      .filter((c): c is Connection => !!c),
+    ...wsOutSources
+      .map((src, i) => (src ? { from: src, to: `wo:${i}` } : null))
+      .filter((c): c is Connection => !!c),
   ]
 
   return (
-    <div className="workspace">
+    <div
+      className="workspace"
+      ref={workspaceRef}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+    >
+      <svg className="connections">
+        {connections.map((c, i) => {
+          const from = portPos[c.from]
+          const to = portPos[c.to]
+          if (!from || !to) return null
+          return (
+            <line
+              key={i}
+              x1={from.x}
+              y1={from.y}
+              x2={to.x}
+              y2={to.y}
+              stroke="white"
+            />
+          )
+        })}
+        {connecting && portPos[connecting.from] && (
+          <line
+            x1={portPos[connecting.from].x}
+            y1={portPos[connecting.from].y}
+            x2={connecting.x}
+            y2={connecting.y}
+            stroke="white"
+          />
+        )}
+      </svg>
       <div className="workspace-io">
         <div className="inputs">
           {inputs.map((value, i) => (
-            <input
-              key={i}
-              value={value}
-              placeholder={`IN ${i + 1}`}
-              onChange={(e) => {
-                const next = [...inputs]
-                next[i] = e.target.value
-                setInputs(next)
-              }}
-            />
+            <div key={i} className="input-wrapper">
+              <input
+                value={value}
+                placeholder={`IN ${i + 1}`}
+                onChange={(e) => {
+                  const next = [...inputs]
+                  next[i] = e.target.value
+                  setInputs(next)
+                }}
+              />
+              <div
+                className="port output"
+                ref={(el) => registerPort(`w:${i}`, el)}
+                onMouseDown={(e) => startConnection(`w:${i}`, e)}
+              ></div>
+            </div>
           ))}
         </div>
         <div className="outputs">
           {outputs.map((value, i) => (
             <div key={i} className="output">
               {value}
+              <div
+                className="port input"
+                ref={(el) => registerPort(`wo:${i}`, el)}
+                onMouseUp={() => finishConnection(`wo:${i}`)}
+              ></div>
             </div>
           ))}
         </div>
-        <div className="outputs">
-          {wsOutSources.map((src, i) => (
-            <select
-              key={i}
-              value={src}
-              onChange={(e) => setWorkspaceOutSource(i, e.target.value)}
-            >
-              <option value="">Select</option>
-              {workspaceOutputOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          ))}
-        </div>
       </div>
-      <div className="chips">
-        {chips.map((chip, index) => (
-          <Chip
-            key={chip.id}
-            id={chip.id}
-            code={chip.code}
-            setCode={(code) => setChipCode(chip.id, code)}
-            outputs={chip.outputs}
-            inputSources={chip.inputSources}
-            setInputSource={(p, s) => setInputSource(chip.id, p, s)}
-            options={[
-              ...inputOptions,
-              ...chips
-                .slice(0, index)
-                .flatMap((c, ci) =>
-                  Array.from({ length: NUM_PORTS }, (_, j) => ({
-                    value: `c:${c.id}:${j}`,
-                    label: `Chip ${ci + 1} OUT ${j + 1}`,
-                  }))
-                ),
-            ]}
-          />
-        ))}
-      </div>
+      {chips.map((chip) => (
+        <Chip
+          key={chip.id}
+          id={chip.id}
+          code={chip.code}
+          setCode={(code) => setChipCode(chip.id, code)}
+          outputs={chip.outputs}
+          position={{ x: chip.x, y: chip.y }}
+          onDragStart={handleChipMouseDown}
+          registerPort={registerPort}
+          startConnection={startConnection}
+          finishConnection={finishConnection}
+        />
+      ))}
       <button className="run" onClick={run}>
         Run
       </button>
@@ -194,3 +311,4 @@ export default function Workspace() {
     </div>
   )
 }
+

@@ -55,3 +55,23 @@
   margin-top: 20px;
 }
 
+
+.workspace {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.workspace-io {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.chips {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  justify-content: center;
+}

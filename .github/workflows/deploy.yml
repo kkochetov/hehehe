@@ -16,6 +16,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      target_dir: ${{ steps.build.outputs.target_dir }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -24,14 +26,19 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - name: Build project
+        id: build
         shell: bash
         run: |
           if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
             export VITE_BASE_PATH="/hehehe/main/"
             npm run build -- --outDir dist/main
+            printf '<!doctype html><meta http-equiv="refresh" content="0; url=%s" />\n' "$VITE_BASE_PATH" > dist/index.html
+            echo "target_dir=main/" >> "$GITHUB_OUTPUT"
           else
             export VITE_BASE_PATH="/hehehe/mr/"
             npm run build -- --outDir dist/mr
+            printf '<!doctype html><meta http-equiv="refresh" content="0; url=%s" />\n' "$VITE_BASE_PATH" > dist/index.html
+            echo "target_dir=mr/" >> "$GITHUB_OUTPUT"
           fi
       - uses: actions/upload-pages-artifact@v3
         with:
@@ -42,7 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url }}${{ needs.build.outputs.target_dir }}
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
